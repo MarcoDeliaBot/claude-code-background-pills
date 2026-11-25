@@ -1,74 +1,94 @@
-# Claude Code background pills
+# Background Pills for Claude Code
 
-A mod for [Claude Code](https://code.claude.com) (desktop app and terminal) that shows the
-background work of a session as **one row of pills above the message box**, only while
-something runs:
+See what Claude is doing in the background at a glance. **Background Pills** adds one quiet row
+of pills above the message box, one pill for each piece of background work. Each pill fills up as
+the work moves toward its end, with the percent and the time left. The row is there only while
+something runs.
 
-- **workflows** (the Workflow tool): the pill fills as phases and agents finish, with the
-  percent and an estimated time left; pointing at it shows the phase and how many agents
-  are done;
-- **background shell commands**: an exact countdown when the command says how long it
-  waits (`sleep`, `Start-Sleep`, `timeout /t`), an estimate (`~`) from earlier runs of the
-  same command otherwise;
-- **background agents**: a breathing dot and a passing light, the time running and, on
-  hover, what the agent is doing and its tokens;
-- a finished pill turns green with a ✓ for two seconds, then goes;
-- pills that do not fit the row are counted in `+N`.
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/pills-dark.png">
+  <img alt="A row of pills above the Claude Code message box: a workflow at 47% with about 6:12 left, a code review agent running for 1:05, npm test at 72% with about 0:16 left, sleep 90 at 33% with 1:00 left, and +2 more" src="docs/pills-light.png" width="900">
+</picture>
 
-Nothing changes in how Claude works: the mod only watches what runs. The interface text is
-in Italian.
+Live, the pills move: the fill grows, the countdown ticks every second, and work with no known
+end shows a breathing dot and a passing light.
+
+![Animated preview of the pills](docs/pills-animated.svg)
+
+## What each pill shows
+
+| Background work | The pill shows |
+|---|---|
+| **Workflow** (the Workflow tool) | Fill and percent from the phases passed and the agents done in the current phase, plus an estimated time left |
+| **Background shell command** | An exact countdown when the command states its wait (`sleep 90`, `Start-Sleep -Seconds 90`, `timeout /t 90`); otherwise an estimate (`~`) from earlier runs of the same command; the first time, the time running |
+| **Background agent** | A breathing dot and a passing light, and the time running |
+| **Anything else in the background** | Its name and the time running |
+
+**Point at a pill to see its detail** on the same row: a workflow's phase and agents, what an
+agent is doing and its tokens, where a command's length comes from.
+
+![Pointing at a workflow pill shows: phase 2 of 4: Review · 5 of 9 agents done · running for 5:31](docs/hover-detail.png)
+
+**When work ends well**, its pill turns green with a ✓ for two seconds, then goes.
+
+![A finished pill: a green ✓ npm run build, done](docs/finished.png)
+
+Pills keep the order the work started in, so they never jump. Pills that do not fit the row are
+counted in a last `+N`; point at it for their names. With the band collapsed, the status line
+under the message box says the same in a few words, for example
+`⏳ release-checks 47% ~6:12 · npm test 72% ~0:16`.
 
 ## Install
 
-In Claude Code:
+In Claude Code, run:
 
 ```
 /plugin marketplace add MarcoDeliaBot/claude-code-background-pills
-/plugin install barra-lavori@background-pills
+/plugin install background-pills@background-pills
 ```
 
-Then open a new session. Built and tested on Claude Code 2.1.330, which runs mods (hooks
-modules).
+Then start a new session. Built and tested on Claude Code 2.1.330, which runs mods (hooks modules)
+in the desktop app and the terminal. The desktop app draws the pills as shown above; the terminal
+draws them as text with bars like `▰▰▰▱▱▱`.
 
 ## Turn it off
 
-- Desktop app: **+** next to the message box → **Plugins** → turn off `barra-lavori`.
-- Terminal: `claude plugin disable barra-lavori@background-pills`
-  (`enable` to turn it back on).
+- **Desktop app:** click **+** next to the message box, choose **Plugins**, and turn off
+  `background-pills`.
+- **Terminal:** `claude plugin disable background-pills@background-pills`
+  (use `enable` to turn it back on, `uninstall` to remove it).
+
+The change applies to sessions started after it.
 
 ## Where the numbers come from
 
-- **Workflow percent**: phases done plus the share of agents done in the current phase;
-  it never goes back and stops at 99% until the run ends. The time left comes from earlier
-  runs of the same workflow, or from the pace so far (once 10% is done and 15 s have passed).
-- **Commands**: exact when the command states its wait, estimated from earlier runs
-  otherwise; the first run of an unknown command shows only the time running.
-- Past durations stay on your computer, in the mod's own store under the Claude Code
-  configuration folder: the last 5 times for at most 80 commands or workflows.
-- With the band collapsed, the status line under the message box says the same in a few
-  words.
+- **Workflow percent:** the phases already passed plus the share of agents done in the current
+  phase. It never goes back, and it stops at 99% until the run ends.
+- **Workflow time left (`~`):** from earlier runs of the same workflow when there are any;
+  otherwise from the pace so far, once 10% is done and 15 seconds have passed.
+- **Command countdown:** exact when the command states how long it waits; an estimate (`~`) from
+  the same command's earlier runs otherwise.
+- **Over time:** when work runs past its expected length, the countdown becomes `+0:40`.
+- **`≥` in front of a time:** the work was already running when the mod first saw it.
+
+## Privacy
+
+Background Pills only watches the work of your own session; it never changes what Claude does and
+sends nothing anywhere. To give repeated commands and workflows a countdown, it keeps the last 5
+run times of at most 80 commands or workflows in its own store inside your Claude Code
+configuration folder.
 
 ## Develop
 
 ```
-claude plugin validate barra-lavori
-claude plugin test barra-lavori
+claude plugin validate background-pills
+claude plugin test background-pills
 ```
+
+The mod is one hooks module, [`background-pills/hooks/register.tsx`](background-pills/hooks/register.tsx),
+with its tests next to it. The pictures in this README are drawn by the mod's own pill code; the
+message box around them is a mock-up.
 
 ## License
 
-MIT
-
----
-
-## In italiano
-
-Mod per Claude Code (app desktop e terminale). Mentre qualcosa gira in background mostra
-sopra la casella del messaggio **una riga di pillole**, una per ogni lavoro: workflow,
-comandi in background e agenti. Ogni pillola si riempie man mano che il lavoro avanza, con
-la percentuale e il tempo che manca. Passandoci sopra col mouse compare il dettaglio. Alla
-fine diventa verde con ✓ e poi sparisce.
-
-Installazione: i due comandi `/plugin` qui sopra, poi una sessione nuova.
-Per spegnerla: **+** → **Plugins** → disattiva `barra-lavori`.
-Dettagli in [barra-lavori/README.md](barra-lavori/README.md).
+[MIT](LICENSE)

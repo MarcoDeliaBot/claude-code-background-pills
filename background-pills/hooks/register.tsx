@@ -1,4 +1,4 @@
-// barra-lavori: one row of pills above the message box, one pill for each
+// background-pills: one row of pills above the message box, one pill for each
 // piece of background work of this session, shown only while it runs:
 // - the pill fills with colour as the work moves toward its end (a workflow's
 //   phases and agents, a command whose length is known), with the percent and
@@ -26,7 +26,7 @@ import type { AgentInfo, EngineInterface, Register } from 'claude-code'
 
 import type {
   FinishedPill,
-  Lavori,
+  Work,
   Live,
   LiveAgent,
   TrackedOther,
@@ -34,11 +34,11 @@ import type {
   TrackedWorkflow,
 } from '../types'
 
-const EMPTY: Lavori = { workflows: [], shells: [], others: [], finished: [] }
+const EMPTY: Work = { workflows: [], shells: [], others: [], finished: [] }
 const NO_LIVE: Live = { now: 0, agents: [] }
 
-const lavori = atom({ plugin: 'barra-lavori', key: 'lavori' } as const, EMPTY, { shape: 'v2' })
-const live = atom({ plugin: 'barra-lavori', key: 'live' } as const, NO_LIVE)
+const work = atom({ plugin: 'background-pills', key: 'work' } as const, EMPTY, { shape: 'v1' })
+const live = atom({ plugin: 'background-pills', key: 'live' } as const, NO_LIVE)
 
 const TICK_MS = 1000
 /** A workflow whose task id is still unknown is kept this long without the session listing it. */
@@ -50,7 +50,7 @@ const DONE_MS = 2000
 /** The longest name a pill shows. */
 const NAME_MAX = 24
 
-const HISTORY_KEY = 'durate'
+const HISTORY_KEY = 'durations'
 const HISTORY_RUNS = 5
 const HISTORY_KEYS = 80
 
@@ -210,9 +210,9 @@ function since(isExact: boolean, ms: number): string {
 
 function tokens(n: number): string {
   if (n < 1000) return String(n)
-  if (n < 1_000_000) return `${(n / 1000).toFixed(1).replace('.', ',')}k`
+  if (n < 1_000_000) return `${(n / 1000).toFixed(1)}k`
 
-  return `${(n / 1_000_000).toFixed(1).replace('.', ',')}M`
+  return `${(n / 1_000_000).toFixed(1)}M`
 }
 
 /** The phase the run has reached: the furthest one any of its agents runs or ran in. */
@@ -279,7 +279,7 @@ function workflowLeft(w: TrackedWorkflow, p: WorkflowProgress, now: number): num
 
 export type Pill = {
   key: string
-  kind: 'workflow' | 'comando' | 'agente' | 'altro' | 'fatto'
+  kind: 'workflow' | 'command' | 'agent' | 'other' | 'done'
   /** When the work started: pills keep that order, so they never jump. */
   start: number
   name: string
@@ -302,12 +302,12 @@ function workflowPill(w: TrackedWorkflow, now: number): Pill {
   const n = w.phases.length
   const detail: string[] = []
 
-  if (p.phaseIndex >= 0) detail.push(`fase ${p.phaseIndex + 1} di ${n}: ${w.phases[p.phaseIndex]}`)
-  else if (phase !== undefined) detail.push(`fase ${phase}`)
-  else if (n > 0) detail.push(`${n} fasi`)
+  if (p.phaseIndex >= 0) detail.push(`phase ${p.phaseIndex + 1} of ${n}: ${w.phases[p.phaseIndex]}`)
+  else if (phase !== undefined) detail.push(`phase ${phase}`)
+  else if (n > 0) detail.push(`${n} phases`)
 
-  detail.push(p.started === 0 ? 'in avvio' : `${p.done} di ${p.started} agenti finiti`)
-  detail.push(`da ${since(w.isExactStart, spent)}`)
+  detail.push(p.started === 0 ? 'starting' : `${p.done} of ${p.started} agents done`)
+  detail.push(`running for ${since(w.isExactStart, spent)}`)
 
   const left = workflowLeft(w, p, now)
   let time = since(w.isExactStart, spent)
@@ -318,7 +318,7 @@ function workflowPill(w: TrackedWorkflow, now: number): Pill {
     isCountdown = true
   } else if (left !== undefined) {
     time = `+${clock(-left)}`
-    detail.push('oltre il solito')
+    detail.push('over its usual time')
   }
 
   return {
@@ -337,19 +337,19 @@ function shellPill(s: TrackedShell, now: number): Pill {
   const spent = now - s.startedAt
   const expected = s.expectedMs !== undefined && s.expectedMs > 0 ? s.expectedMs : undefined
   const how =
-    s.expectedFrom === 'comando'
-      ? 'durata scritta nel comando'
-      : s.expectedFrom === 'storico' && expected !== undefined
-        ? `di solito ${clock(expected)}`
-        : 'durata ancora sconosciuta'
+    s.expectedFrom === 'command'
+      ? 'length stated in the command'
+      : s.expectedFrom === 'history' && expected !== undefined
+        ? `usually ${clock(expected)}`
+        : 'length not known yet'
   const pill: Pill = {
     key: `c-${s.id}`,
-    kind: 'comando',
+    kind: 'command',
     start: s.startedAt,
     name: clip(s.command, NAME_MAX),
     time: since(s.isExactStart, spent),
     isCountdown: false,
-    detail: `${clip(s.command, 80)} · ${how} · da ${since(s.isExactStart, spent)}`,
+    detail: `${clip(s.command, 80)} · ${how} · running for ${since(s.isExactStart, spent)}`,
   }
 
   if (expected === undefined || !s.isExactStart) return pill
@@ -360,7 +360,7 @@ function shellPill(s: TrackedShell, now: number): Pill {
     return {
       ...pill,
       time: `+${clock(-left)}`,
-      detail: `${pill.detail} · oltre ${s.expectedFrom === 'storico' ? 'il solito' : 'il previsto'}`,
+      detail: `${pill.detail} · over its ${s.expectedFrom === 'history' ? 'usual' : 'expected'} time`,
     }
   }
 
@@ -370,7 +370,7 @@ function shellPill(s: TrackedShell, now: number): Pill {
     ...pill,
     fraction,
     percent: `${Math.floor(fraction * 100)}%`,
-    time: `${s.expectedFrom === 'storico' ? '~' : ''}${clock(left, Math.ceil)}`,
+    time: `${s.expectedFrom === 'history' ? '~' : ''}${clock(left, Math.ceil)}`,
     isCountdown: true,
   }
 }
@@ -382,12 +382,12 @@ function agentPill(a: LiveAgent, now: number): Pill {
 
   return {
     key: `a-${a.id}`,
-    kind: 'agente',
+    kind: 'agent',
     start: a.startTime,
     name: clip(a.description, NAME_MAX),
     time: clock(now - a.startTime),
     isCountdown: false,
-    detail: [doing, a.tokenCount > 0 ? `${tokens(a.tokenCount)} token` : 'in avvio']
+    detail: [doing, a.tokenCount > 0 ? `${tokens(a.tokenCount)} tokens` : 'starting']
       .filter((x): x is string => x !== undefined)
       .join(' · '),
   }
@@ -396,30 +396,30 @@ function agentPill(a: LiveAgent, now: number): Pill {
 function otherPill(o: TrackedOther, now: number): Pill {
   return {
     key: `o-${o.id}`,
-    kind: 'altro',
+    kind: 'other',
     start: o.startedAt,
     name: clip(o.description || o.type, NAME_MAX),
     time: since(false, now - o.startedAt),
     isCountdown: false,
-    detail: `${o.type} in background`,
+    detail: `${o.type} in the background`,
   }
 }
 
 function donePill(f: FinishedPill): Pill {
   return {
     key: f.key,
-    kind: 'fatto',
+    kind: 'done',
     start: f.start,
     name: f.name,
-    time: 'fatto',
+    time: 'done',
     isCountdown: false,
-    detail: 'finito',
+    detail: 'finished',
     isDone: true,
   }
 }
 
 /** Every pill, in the order the work started; empty when nothing runs. */
-export function buildPills(l: Lavori, lv: Live, now: number): Pill[] {
+export function buildPills(l: Work, lv: Live, now: number): Pill[] {
   const pills = [
     ...l.workflows.map(w => workflowPill(w, now)),
     ...lv.agents.map(a => agentPill(a, now)),
@@ -515,7 +515,7 @@ export function textWidth(text: string, isBold = false): number {
     else if (/[mwMW@%]/.test(c)) w += 10.4
     else if (/[0-9~+]/.test(c)) w += 7.3
     else if (/[A-Z]/.test(c)) w += 8.3
-    else w += 6.8
+    else w += 6.4
   }
 
   return Math.ceil(isBold ? w * 1.07 : w)
@@ -532,7 +532,7 @@ function pillWords(p: Pill): { words: Array<{ text: string; cls: string; x: numb
 
   if (p.percent !== undefined) {
     words.push({ text: p.percent, cls: 'tx n', x })
-    x += textWidth(p.percent) + 6
+    x += textWidth(p.percent) + 8
   }
 
   words.push({ text: p.time, cls: p.isDone === true ? 'ok b' : 'acc n', x })
@@ -616,11 +616,11 @@ export function moreSvg(count: number): { source: string; width: number } {
 // ---------------------------------------------------------------- the tracker
 
 function withWorkflow(
-  t: Lavori,
+  t: Work,
   runId: string,
   create: () => TrackedWorkflow,
   change: (w: TrackedWorkflow) => TrackedWorkflow,
-): Lavori {
+): Work {
   const had = t.workflows.some(w => w.runId === runId)
   const workflows = had
     ? t.workflows.map(w => (w.runId === runId ? change(w) : w))
@@ -630,7 +630,7 @@ function withWorkflow(
 }
 
 /** Drops every task whose id is in `ended`: shells, workflows (by task id), others. */
-export function dropTasks(t: Lavori, ended: ReadonlySet<string>): Lavori {
+export function dropTasks(t: Work, ended: ReadonlySet<string>): Work {
   return {
     ...t,
     workflows: t.workflows.filter(w => w.taskId === undefined || !ended.has(w.taskId)),
@@ -639,14 +639,14 @@ export function dropTasks(t: Lavori, ended: ReadonlySet<string>): Lavori {
   }
 }
 
-function withFinished(t: Lavori, more: readonly FinishedPill[], now: number): Lavori {
+function withFinished(t: Work, more: readonly FinishedPill[], now: number): Work {
   const keep = (t.finished ?? []).filter(f => now - f.at < DONE_MS && !more.some(m => m.key === f.key))
 
   return { ...t, finished: [...keep, ...more] }
 }
 
 /** Brings the tracker in line with the session's own list of background work. */
-export function reconcile(t: Lavori, listed: readonly ListedTask[], now: number): Lavori {
+export function reconcile(t: Work, listed: readonly ListedTask[], now: number): Work {
   const ids = new Set(listed.map(x => x.id))
   const isShell = (x: ListedTask) => x.type === 'shell' || x.command !== undefined
   const isWorkflow = (x: ListedTask) => x.type === 'workflow'
@@ -731,7 +731,7 @@ async function saveDurations($: Dollar, durations: ReadonlyArray<readonly [strin
 }
 
 async function refresh($: Dollar): Promise<void> {
-  const l = await read($, lavori)
+  const l = await read($, work)
   let listed: AgentInfo[] = []
 
   try {
@@ -777,7 +777,7 @@ async function refresh($: Dollar): Promise<void> {
   }
 
   if (justDone.length > 0 || isStale || peaks.size > 0) {
-    await update($, lavori, t => ({
+    await update($, work, t => ({
       ...withFinished(t, justDone, now),
       workflows: t.workflows.map(w => {
         const peak = peaks.get(w.runId)
@@ -812,7 +812,7 @@ async function refresh($: Dollar): Promise<void> {
 
 /** Reads the phase of workflow agents whose meta file was not read yet. */
 async function fillPhases($: Dollar): Promise<void> {
-  const t = await read($, lavori)
+  const t = await read($, work)
   const found: Array<{ runId: string; agentId: string; phase: string; label?: string }> = []
 
   for (const w of t.workflows) {
@@ -840,7 +840,7 @@ async function fillPhases($: Dollar): Promise<void> {
 
   if (found.length === 0) return
 
-  await update($, lavori, t2 => ({
+  await update($, work, t2 => ({
     ...t2,
     workflows: t2.workflows.map(w => {
       const mine = found.filter(f => f.runId === w.runId && w.agents[f.agentId] !== undefined)
@@ -922,7 +922,7 @@ export const register: Register = on => {
   on('ui.render', { component: 'AbovePrompt' }, async ($, e, next) => {
     if (e.props.hasSurvey) return next(e)
 
-    const l = await read($, lavori)
+    const l = await read($, work)
     const lv = await read($, live)
     const now = lv.now > 0 ? lv.now : await $.clock.now()
     const pills = buildPills(l, lv, now)
@@ -975,8 +975,8 @@ export const register: Register = on => {
           </Box>
         ))}
         {more === undefined ? null : (
-          <Box key="altri" flexShrink={0} flexDirection="row" alignItems="center" gap="xs">
-            <Svg source={more.source} alt={`altri ${hidden.length} lavori`} width={more.width} height={PILL_HEIGHT} />
+          <Box key="more" flexShrink={0} flexDirection="row" alignItems="center" gap="xs">
+            <Svg source={more.source} alt={`${hidden.length} more`} width={more.width} height={PILL_HEIGHT} />
             <Box display="none" hover={{ display: 'flex' }}>
               <Text dimColor wrap="truncate-end">
                 {hidden.map(p => p.name).join(', ')}
@@ -1024,7 +1024,7 @@ export const register: Register = on => {
         r.workflowName ?? meta.name ?? (typeof e.name === 'string' ? e.name : undefined) ?? 'workflow'
       const usualMs = usual(await readHistory($), historyKey('wf', name))
 
-      await update($, lavori, t =>
+      await update($, work, t =>
         withWorkflow(
           t,
           runId,
@@ -1062,7 +1062,7 @@ export const register: Register = on => {
       const now = await $.clock.now()
       const runId = wf.runId
 
-      await update($, lavori, t =>
+      await update($, work, t =>
         withWorkflow(
           t,
           runId,
@@ -1084,12 +1084,12 @@ export const register: Register = on => {
 
     try {
       if (agentId !== undefined) {
-        const t = await read($, lavori)
+        const t = await read($, work)
 
         if (t.workflows.some(w => w.agents[agentId] !== undefined)) {
           const now = await $.clock.now()
 
-          await update($, lavori, t2 => ({
+          await update($, work, t2 => ({
             ...t2,
             workflows: t2.workflows.map(w => {
               const had = w.agents[agentId]
@@ -1127,12 +1127,12 @@ export const register: Register = on => {
       const before = slept === undefined ? usual(await readHistory($), historyKey('cmd', command)) : undefined
       const shell: TrackedShell =
         slept !== undefined
-          ? { id, command, startedAt: now, isExactStart: true, expectedMs: slept, expectedFrom: 'comando' }
+          ? { id, command, startedAt: now, isExactStart: true, expectedMs: slept, expectedFrom: 'command' }
           : before !== undefined
-            ? { id, command, startedAt: now, isExactStart: true, expectedMs: before, expectedFrom: 'storico' }
+            ? { id, command, startedAt: now, isExactStart: true, expectedMs: before, expectedFrom: 'history' }
             : { id, command, startedAt: now, isExactStart: true }
 
-      await update($, lavori, t =>
+      await update($, work, t =>
         t.shells.some(s => s.id === id) ? t : { ...t, shells: [...t.shells, shell] },
       )
       soon($)
@@ -1151,7 +1151,7 @@ export const register: Register = on => {
       const id = e.task_id ?? e.shell_id
 
       if (ran.deny === undefined && ran.isError !== true && typeof id === 'string') {
-        await update($, lavori, t => dropTasks(t, new Set([id])))
+        await update($, work, t => dropTasks(t, new Set([id])))
         soon($)
       }
     } catch {
@@ -1170,7 +1170,7 @@ export const register: Register = on => {
 
         if (ended.length > 0) {
           const now = await $.clock.now()
-          const t = await read($, lavori)
+          const t = await read($, work)
           const durations: Array<readonly [string, number]> = []
           const done: FinishedPill[] = []
 
@@ -1195,7 +1195,7 @@ export const register: Register = on => {
             }
           }
 
-          await update($, lavori, t2 => withFinished(dropTasks(t2, new Set(ended.map(x => x.id))), done, now))
+          await update($, work, t2 => withFinished(dropTasks(t2, new Set(ended.map(x => x.id))), done, now))
           soon($)
 
           if (durations.length > 0) await saveDurations($, durations).catch(() => undefined)
@@ -1216,7 +1216,7 @@ export const register: Register = on => {
       if (Array.isArray(listed)) {
         const now = await $.clock.now()
 
-        await update($, lavori, t => reconcile(t, listed, now))
+        await update($, work, t => reconcile(t, listed, now))
         soon($)
       }
     } catch {

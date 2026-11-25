@@ -46,9 +46,9 @@ async function pictures(ui: { findAll: (q: { type: string }) => Promise<Array<{ 
 }
 
 const BAND = {
-  plugin: 'barra-lavori',
+  plugin: 'background-pills',
   component: 'AbovePrompt',
-  requestId: 'barra-lavori',
+  requestId: 'background-pills',
   props: {
     hasSurvey: false,
     isCollapsed: false,
@@ -72,18 +72,18 @@ test('a command that sleeps is a pill that fills, with the percent and an exact 
   const h = harness(on)
 
   await $.session.start({ cwd: '/', surface: 'desktop', isInteractive: true })
-  await $.tool.call({ tool: 'Bash', command: 'sleep 60 && echo fatto', run_in_background: true })
+  await $.tool.call({ tool: 'Bash', command: 'sleep 60 && echo done', run_in_background: true })
 
   const ui = await $.ui.mount({ ...BAND, surface: 'desktop' })
 
   await h.clock.advance(1000)
-  expect((await pictures(ui)).map(x => x.alt)).toEqual(['sleep 60 && echo fatto · 1% · 0:59'])
+  expect((await pictures(ui)).map(x => x.alt)).toEqual(['sleep 60 && echo done · 1% · 0:59'])
 
   await h.clock.advance(29_000)
 
   const [pill] = await pictures(ui)
 
-  expect(pill?.alt).toBe('sleep 60 && echo fatto · 50% · 0:30')
+  expect(pill?.alt).toBe('sleep 60 && echo done · 50% · 0:30')
   // The fill covers half the pill, the words on top.
   expect(pill?.source).toMatch(/<rect clip-path="url\(#k-c-b1\)" x="0" y="0" width="[\d.]+" height="26" fill="#d97757" fill-opacity="0.3"\/>/)
   expect(pill?.source).toContain('>50%</text>')
@@ -93,7 +93,7 @@ test('a command that sleeps is a pill that fills, with the percent and an exact 
   // It ends well: green with a ✓ for a moment, then gone.
   await $.prompt.submit(ended('b1'))
   await h.clock.advance(500)
-  expect((await pictures(ui)).map(x => x.alt)).toEqual(['sleep 60 && echo fatto · fatto'])
+  expect((await pictures(ui)).map(x => x.alt)).toEqual(['sleep 60 && echo done · done'])
   expect((await pictures(ui))[0]?.source).toContain('>✓</text>')
 
   await h.clock.advance(3000)
@@ -116,7 +116,7 @@ test('a command that ran before counts down from its earlier time', async ($, on
 
   await h.clock.advance(10_000)
   expect((await pictures(ui)).map(x => x.alt)).toEqual(['npm test · 33% · ~0:20'])
-  expect(await ui.find({ type: 'Text', text: /di solito 0:30/ })).toBeDefined()
+  expect(await ui.find({ type: 'Text', text: /usually 0:30/ })).toBeDefined()
   await ui.unmount()
 })
 
@@ -128,14 +128,14 @@ test('a workflow pill: percent, estimated end, phase and agents in its detail', 
       status: 'async_launched',
       taskId: 'w1',
       runId: 'wf_1',
-      workflowName: 'consegne',
+      workflowName: 'deliveries',
       transcriptDir: '/t/wf_1',
     },
   }))
   on('agent.spawn', (_$, e) => ({ model: 'm', agentId: e.description === 'uno' ? 'a1' : 'a2' }))
   on('fs.read', (_$, e) => ({
     value: JSON.stringify({
-      workflowPhase: e.path.endsWith('agent-a2.meta.json') ? 'Rivedi' : 'Aggiorna',
+      workflowPhase: e.path.endsWith('agent-a2.meta.json') ? 'Review' : 'Update',
       description: 'x',
     }),
   }))
@@ -156,13 +156,13 @@ test('a workflow pill: percent, estimated end, phase and agents in its detail', 
   await $.tool.call({
     tool: 'Workflow',
     script:
-      "export const meta = {\n  name: 'consegne',\n  description: 'd',\n  phases: [{ title: 'Aggiorna', detail: 'a [b]' }, { title: 'Rivedi' }, { title: 'Incrocio' }],\n}\nawait agent('x')",
+      "export const meta = {\n  name: 'deliveries',\n  description: 'd',\n  phases: [{ title: 'Update', detail: 'a [b]' }, { title: 'Review' }, { title: 'Cross-check' }],\n}\nawait agent('x')",
   })
   await $.agent.spawn({ ...SPAWN, description: 'uno', workflow: { runId: 'wf_1', agentIndex: 1 } })
   await $.agent.spawn({ ...SPAWN, description: 'due', workflow: { runId: 'wf_1', agentIndex: 2 } })
   await h.clock.advance(20_000)
   await $.turn.complete({
-    answer: 'fatto',
+    answer: 'done',
     durationMs: 10,
     isAborted: false,
     turnId: 't1',
@@ -174,9 +174,9 @@ test('a workflow pill: percent, estimated end, phase and agents in its detail', 
 
   await h.clock.advance(2000)
   // A third done after 20 s: about 40 s more, counted from the last end.
-  expect((await pictures(desk)).map(x => x.alt)).toEqual(['consegne · 33% · ~0:38'])
+  expect((await pictures(desk)).map(x => x.alt)).toEqual(['deliveries · 33% · ~0:38'])
   expect(
-    await desk.find({ type: 'Text', text: 'fase 2 di 3: Rivedi · 1 di 2 agenti finiti · da 0:22' }),
+    await desk.find({ type: 'Text', text: 'phase 2 of 3: Review · 1 of 2 agents done · running for 0:22' }),
   ).toBeDefined()
   await desk.unmount()
 
@@ -199,12 +199,12 @@ test('a workflow pill: percent, estimated end, phase and agents in its detail', 
 test('an agent pill: a pulsing dot, its time, what it does; green when it completes', async ($, on) => {
   const agent: FakeAgent = {
     id: 'ag1',
-    description: 'Cerca file',
+    description: 'Find files',
     type: 'Explore',
     status: 'running',
     kind: 'local_agent',
     taskStatus: 'running',
-    label: 'Cerca file\nLeggo src/app.ts',
+    label: 'Find files\nReading src/app.ts',
     startTime: 1_000_000 - 65_000,
     cwd: '/',
     tokenCount: 12_400,
@@ -219,15 +219,15 @@ test('an agent pill: a pulsing dot, its time, what it does; green when it comple
   await h.clock.advance(1000)
   const [pill] = await pictures(ui)
 
-  expect(pill?.alt).toBe('Cerca file · 1:06')
+  expect(pill?.alt).toBe('Find files · 1:06')
   // No known end: a dot that breathes and a light that passes.
   expect(pill?.source).toContain('<animate attributeName="opacity"')
   expect(pill?.source).toContain('<animate attributeName="x"')
-  expect(await ui.find({ type: 'Text', text: 'Leggo src/app.ts · 12,4k token' })).toBeDefined()
+  expect(await ui.find({ type: 'Text', text: 'Reading src/app.ts · 12.4k tokens' })).toBeDefined()
 
   agent.taskStatus = 'completed'
   await h.clock.advance(1000)
-  expect((await pictures(ui)).map(x => x.alt)).toEqual(['Cerca file · fatto'])
+  expect((await pictures(ui)).map(x => x.alt)).toEqual(['Find files · done'])
 
   await h.clock.advance(3000)
   expect(await pictures(ui)).toEqual([])
@@ -249,10 +249,10 @@ test('pills that do not fit the row are counted in +N', async ($, on) => {
 
   const alts = (await pictures(ui)).map(x => x.alt)
   const names = alts.filter(a => a.startsWith('sleep 10'))
-  const more = alts.find(a => /^altri \d lavori$/.test(a))
+  const more = alts.find(a => /^\d more$/.test(a))
 
   expect(more).toBeDefined()
-  expect(names.length + Number(String(more).split(' ')[1])).toBe(6)
+  expect(names.length + Number(String(more).split(' ')[0])).toBe(6)
   expect(names.length).toBeLessThan(6)
   await ui.unmount()
 })

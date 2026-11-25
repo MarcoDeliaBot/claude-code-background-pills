@@ -37,7 +37,7 @@ export type TrackedShell = {
   isExactStart: boolean
   /** How long it should take: from the command itself (a sleep) or from its earlier runs. */
   expectedMs?: number
-  expectedFrom?: 'comando' | 'storico'
+  expectedFrom?: 'command' | 'history'
 }
 
 /** Any other background task the session lists (a monitor, a remote agent). */
@@ -46,7 +46,7 @@ export type TrackedOther = { id: string; type: string; description: string; star
 /** A piece of work that just ended well: its pill stays green with a ✓ for a moment. */
 export type FinishedPill = { key: string; name: string; start: number; at: number }
 
-export type Lavori = {
+export type Work = {
   workflows: TrackedWorkflow[]
   shells: TrackedShell[]
   others: TrackedOther[]
@@ -68,8 +68,8 @@ export type Live = { now: number; agents: LiveAgent[] }
 
 declare module 'claude-code' {
   interface PluginState {
-    'barra-lavori': {
-      lavori: Shaped<Lavori>
+    'background-pills': {
+      work: Shaped<Work>
       live: Live
     }
   }
