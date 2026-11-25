@@ -1,0 +1,14 @@
+{
+  "name": "background-pills",
+  "owner": {
+    "name": "MarcoDeliaBot"
+  },
+  "description": "Claude Code mods by MarcoDeliaBot",
+  "plugins": [
+    {
+      "name": "barra-lavori",
+      "source": "./barra-lavori",
+      "description": "Background work as one row of pills above the message box: workflows, agents and background commands fill up with the percent and the time left (Italian interface)"
+    }
+  ]
+}
