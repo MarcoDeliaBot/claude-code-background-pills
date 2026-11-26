@@ -1,4 +1,4 @@
-// background-pills: one row of pills above the message box, one pill for each
+// background-pills: one row of pills by the message box, one pill for each
 // piece of background work of this session, shown only while it runs:
 // - the pill fills with colour as the work moves toward its end (a workflow's
 //   phases and agents, a command whose length is known), with the percent and
@@ -7,8 +7,11 @@
 //   what an agent is doing and its tokens, where a command's length comes from);
 // - work that ends well turns green with a ✓ for two seconds, then goes;
 // - pills that do not fit the row are counted in a last «+N».
-// While the band is collapsed (or no surface draws it) a short status line
-// under the prompt says the same in a few words. Both go when nothing runs.
+// The row sits above the message box (the band) or under it (the hint line),
+// as the person picks with `/pills above` or `/pills below`; the pick is kept
+// across sessions. Where neither draws (the band collapsed, a surface without
+// pictures) the status line under the prompt writes the pills as text with
+// small bars. All of it goes when nothing runs.
 //
 // Sources, all of this session:
 // - Workflow tool calls (name and phases from the script's meta, run and task ids);
@@ -26,6 +29,7 @@ import type { AgentInfo, EngineInterface, Register } from 'claude-code'
 
 import type {
   FinishedPill,
+  Place,
   Work,
   Live,
   LiveAgent,
@@ -39,18 +43,20 @@ const NO_LIVE: Live = { now: 0, agents: [] }
 
 const work = atom({ plugin: 'background-pills', key: 'work' } as const, EMPTY, { shape: 'v1' })
 const live = atom({ plugin: 'background-pills', key: 'live' } as const, NO_LIVE)
+const place = atom({ plugin: 'background-pills', key: 'place' } as const, 'above' as Place)
 
 const TICK_MS = 1000
 /** A workflow whose task id is still unknown is kept this long without the session listing it. */
 const UNCONFIRMED_MS = 120_000
-/** The status line waits this long for the band before it speaks. */
-const STATUS_GRACE_MS = 2500
 /** How long a finished pill stays green. */
 const DONE_MS = 2000
 /** The longest name a pill shows. */
 const NAME_MAX = 24
 
 const HISTORY_KEY = 'durations'
+const PLACE_KEY = 'position'
+/** The status line waits this long for the row before it speaks. */
+const STATUS_GRACE_MS = 2500
 const HISTORY_RUNS = 5
 const HISTORY_KEYS = 80
 
@@ -393,18 +399,6 @@ function agentPill(a: LiveAgent, now: number): Pill {
   }
 }
 
-function otherPill(o: TrackedOther, now: number): Pill {
-  return {
-    key: `o-${o.id}`,
-    kind: 'other',
-    start: o.startedAt,
-    name: clip(o.description || o.type, NAME_MAX),
-    time: since(false, now - o.startedAt),
-    isCountdown: false,
-    detail: `${o.type} in the background`,
-  }
-}
-
 function donePill(f: FinishedPill): Pill {
   return {
     key: f.key,
@@ -418,13 +412,15 @@ function donePill(f: FinishedPill): Pill {
   }
 }
 
-/** Every pill, in the order the work started; empty when nothing runs. */
+/**
+ * Every pill, in the order the work started; empty when nothing runs. Other
+ * background tasks (monitors, live updates) wait rather than work: no pill.
+ */
 export function buildPills(l: Work, lv: Live, now: number): Pill[] {
   const pills = [
     ...l.workflows.map(w => workflowPill(w, now)),
     ...lv.agents.map(a => agentPill(a, now)),
     ...l.shells.map(s => shellPill(s, now)),
-    ...l.others.map(o => otherPill(o, now)),
     ...(l.finished ?? []).filter(f => now - f.at < DONE_MS).map(donePill),
   ]
 
@@ -465,16 +461,31 @@ export function fitPills(
   return { shown, hidden: pills.slice(shown.length) }
 }
 
-/** The status line's few words, or undefined when nothing runs. */
-export function statusText(pills: readonly Pill[]): string | undefined {
-  const running = pills.filter(p => p.isDone !== true)
+/** The pills as one line of text: a bar or a turning glyph, the name, the figures. */
+export function statusText(pills: readonly Pill[], now: number): string | undefined {
+  if (pills.length === 0) return undefined
 
-  if (running.length === 0) return undefined
+  const frame = ['◐', '◓', '◑', '◒'][Math.floor(now / 1000) % 4] ?? '◐'
+  const words: string[] = []
 
-  const words = running.slice(0, 3).map(p => [p.name, p.percent, p.time].filter(Boolean).join(' '))
-  const more = running.length > 3 ? ` · +${running.length - 3}` : ''
+  for (const p of pills) {
+    const word =
+      p.isDone === true
+        ? `✓ ${p.name} done`
+        : p.fraction === undefined
+          ? `${frame} ${p.name} ${p.time}`
+          : `${p.name} ${textBar(p.fraction)} ${p.percent ?? ''} ${p.time}`.replace(/\s+/g, ' ')
+    const used = words.join('   ·   ').length
 
-  return `⏳ ${words.join(' · ')}${more}`
+    if (words.length > 0 && used + word.length > 110) {
+      words.push(`+${pills.length - words.length}`)
+      break
+    }
+
+    words.push(word)
+  }
+
+  return words.join('   ·   ')
 }
 
 /** A text bar for the terminal, which draws no fill: ▰▰▰▱▱▱. */
@@ -489,9 +500,20 @@ export function textBar(fraction: number, cells = 6): string {
 // through), the fill clipped to it, the words on top. Its colours follow the
 // light or dark scheme the app runs in.
 
-export const PILL_HEIGHT = 26
-const PILL_PAD = 11
-const PILL_GAP = 6
+/** A pill picture's measures: height, side padding, font size, text baseline. */
+export type PillSize = { h: number; pad: number; font: number; base: number }
+
+/** The size the README pictures use. */
+export const BAND_SIZE: PillSize = { h: 26, pad: 11, font: 12.5, base: 17.5 }
+/** The size that fits the line under the message box. */
+export const FOOTER_SIZE: PillSize = { h: 20, pad: 8, font: 11, base: 14 }
+export const PILL_HEIGHT = BAND_SIZE.h
+const PILL_GAP = 5
+
+function svgStyle(font: number): string {
+  return SVG_STYLE.replace('font-size:12.5px', `font-size:${font}px`)
+}
+
 const SVG_STYLE =
   '<style>' +
   '.bg{fill:none}.bd{fill:none;stroke:#d9d7cf}.tx{fill:#1f1e1d}.dim{fill:#6f6d67}.acc{fill:#c4623f}' +
@@ -507,7 +529,7 @@ function esc(text: string): string {
 }
 
 /** About how wide a text is at 12.5px in the system font, a little generous so nothing is cut. */
-export function textWidth(text: string, isBold = false): number {
+export function textWidth(text: string, isBold = false, font = 12.5): number {
   let w = 0
 
   for (const c of text) {
@@ -518,45 +540,50 @@ export function textWidth(text: string, isBold = false): number {
     else w += 6.4
   }
 
-  return Math.ceil(isBold ? w * 1.07 : w)
+  return Math.ceil((isBold ? w * 1.07 : w) * (font / 12.5))
 }
 
 /** The words of a pill, left to right, with where each goes. */
-function pillWords(p: Pill): { words: Array<{ text: string; cls: string; x: number }>; width: number } {
-  const marks = p.isDone === true || p.fraction === undefined ? 14 : 0
+function pillWords(
+  p: Pill,
+  size: PillSize,
+): { words: Array<{ text: string; cls: string; x: number }>; width: number } {
+  const k = size.font / 12.5
+  const marks = p.isDone === true || p.fraction === undefined ? Math.round(14 * k) : 0
   const words: Array<{ text: string; cls: string; x: number }> = []
-  let x = PILL_PAD + marks
+  let x = size.pad + marks
 
   words.push({ text: p.name, cls: 'tx b', x })
-  x += textWidth(p.name, true) + 8
+  x += textWidth(p.name, true, size.font) + Math.round(8 * k)
 
   if (p.percent !== undefined) {
     words.push({ text: p.percent, cls: 'tx n', x })
-    x += textWidth(p.percent) + 8
+    x += textWidth(p.percent, false, size.font) + Math.round(8 * k)
   }
 
   words.push({ text: p.time, cls: p.isDone === true ? 'ok b' : 'acc n', x })
-  x += textWidth(p.time)
+  x += textWidth(p.time, false, size.font)
 
-  return { words, width: Math.ceil(x + PILL_PAD) }
+  return { words, width: Math.ceil(x + size.pad) }
 }
 
 /** How wide a pill's picture is, in pixels. */
-export function pillPixels(p: Pill): number {
-  return pillWords(p).width
+export function pillPixels(p: Pill, size: PillSize = BAND_SIZE): number {
+  return pillWords(p, size).width
 }
 
 /** One pill as an SVG picture: border, fill or passing light, dot or ✓, words. */
-export function pillSvg(p: Pill): string {
-  const { words, width: w } = pillWords(p)
-  const h = PILL_HEIGHT
+export function pillSvg(p: Pill, size: PillSize = BAND_SIZE): string {
+  const { words, width: w } = pillWords(p, size)
+  const h = size.h
+  const k = size.font / 12.5
   const isDone = p.isDone === true
   // Ids of its own, in case a surface ever draws the pictures in one page.
   const id = p.key.replace(/[^A-Za-z0-9_-]/g, '_')
   const shape = `x="0.5" y="0.5" width="${w - 1}" height="${h - 1}" rx="${(h - 1) / 2}"`
   const parts: string[] = [
     `<svg xmlns="http://www.w3.org/2000/svg" width="${w}" height="${h}" viewBox="0 0 ${w} ${h}">`,
-    SVG_STYLE,
+    svgStyle(size.font),
     '<defs>',
     `<clipPath id="k-${id}"><rect x="1" y="1" width="${w - 2}" height="${h - 2}" rx="${(h - 2) / 2}"/></clipPath>`,
     `<linearGradient id="g-${id}" x1="0" x2="1"><stop offset="0" stop-color="${ORANGE}" stop-opacity="0"/>` +
@@ -575,17 +602,17 @@ export function pillSvg(p: Pill): string {
     parts.push(
       `<rect clip-path="url(#k-${id})" x="${-band}" y="0" width="${band}" height="${h}" fill="url(#g-${id})">` +
         `<animate attributeName="x" from="${-band}" to="${w}" dur="2.2s" repeatCount="indefinite"/></rect>`,
-      `<circle cx="${PILL_PAD + 4}" cy="${h / 2}" r="3.4" fill="${ORANGE}">` +
+      `<circle cx="${(size.pad + 4 * k).toFixed(1)}" cy="${h / 2}" r="${(3.4 * k).toFixed(1)}" fill="${ORANGE}">` +
         `<animate attributeName="opacity" values="1;0.45;1" dur="1.6s" repeatCount="indefinite"/></circle>`,
     )
   }
 
   parts.push(`<rect class="${isDone ? 'okbd' : 'bd'}" ${shape}/>`)
 
-  if (isDone) parts.push(`<text x="${PILL_PAD}" y="17.5" class="ok b">✓</text>`)
+  if (isDone) parts.push(`<text x="${size.pad}" y="${size.base}" class="ok b">✓</text>`)
 
   for (const word of words) {
-    parts.push(`<text x="${word.x}" y="17.5" class="${word.cls}">${esc(word.text)}</text>`)
+    parts.push(`<text x="${word.x}" y="${size.base}" class="${word.cls}">${esc(word.text)}</text>`)
   }
 
   parts.push('</svg>')
@@ -599,17 +626,17 @@ export function pillAlt(p: Pill): string {
 }
 
 /** The «+N» pill: dashed, quiet. */
-export function moreSvg(count: number): { source: string; width: number } {
+export function moreSvg(count: number, size: PillSize = BAND_SIZE): { source: string; width: number } {
   const text = `+${count}`
-  const w = PILL_PAD * 2 + textWidth(text)
-  const h = PILL_HEIGHT
+  const w = size.pad * 2 + textWidth(text, false, size.font)
+  const h = size.h
 
   return {
     width: w,
     source:
-      `<svg xmlns="http://www.w3.org/2000/svg" width="${w}" height="${h}" viewBox="0 0 ${w} ${h}">${SVG_STYLE}` +
+      `<svg xmlns="http://www.w3.org/2000/svg" width="${w}" height="${h}" viewBox="0 0 ${w} ${h}">${svgStyle(size.font)}` +
       `<rect class="bd" x="0.5" y="0.5" width="${w - 1}" height="${h - 1}" rx="${(h - 1) / 2}" stroke-dasharray="3 3"/>` +
-      `<text x="${PILL_PAD}" y="17.5" class="dim n">${text}</text></svg>`,
+      `<text x="${size.pad}" y="${size.base}" class="dim n">${text}</text></svg>`,
   }
 }
 
@@ -704,8 +731,9 @@ let timer: { cancel: () => void } | undefined
 let ticks = 0
 let shownStatus: string | undefined
 let hasShownStatus = false
-/** When the band last drew pills that are on screen, and whether the person collapsed it. */
+/** When the band or the hint line last drew pills on screen, and whether the band is collapsed. */
 let bandDrawnAt = 0
+let hintDrawnAt = 0
 let isBandCollapsed = false
 /** Since when something has been running, 0 while nothing is. */
 let busySince = 0
@@ -788,7 +816,7 @@ async function refresh($: Dollar): Promise<void> {
   }
 
   const isBusy =
-    l.workflows.length + l.shells.length + l.others.length + agents.length + finished.length + justDone.length > 0
+    l.workflows.length + l.shells.length + agents.length + finished.length + justDone.length > 0
 
   // The clock only runs while something shows: an idle band is never drawn again.
   if (isBusy || before.agents.length > 0 || before.now === 0) {
@@ -797,10 +825,12 @@ async function refresh($: Dollar): Promise<void> {
 
   busySince = isBusy ? (busySince === 0 ? now : busySince) : 0
 
-  const isBandShowing = !isBandCollapsed && now - bandDrawnAt < 3000
+  const where = await read($, place)
+  const isShown =
+    where === 'above' ? !isBandCollapsed && now - bandDrawnAt < 3000 : now - hintDrawnAt < 3000
   const text =
-    isBusy && !isBandShowing && now - busySince >= STATUS_GRACE_MS
-      ? statusText(buildPills(l, { now, agents }, now))
+    isBusy && !isShown && now - busySince >= STATUS_GRACE_MS
+      ? statusText(buildPills(l, { now, agents }, now), now)
       : undefined
 
   if (!hasShownStatus || text !== shownStatus) {
@@ -901,6 +931,18 @@ export const register: Register = on => {
   on('session.start', async ($, e, next) => {
     const started = await next(e)
 
+    try {
+      const kept = await $.store.get(PLACE_KEY)
+
+      await update($, place, () => (kept === 'below' ? 'below' : 'above'))
+      await $.command.register({
+        name: 'pills',
+        description: 'Background pills above or below the message box: /pills above, /pills below',
+      })
+    } catch {
+      // The pills stay above; the command can be missing.
+    }
+
     timer?.cancel()
     timer = undefined
     soon($)
@@ -920,7 +962,7 @@ export const register: Register = on => {
 
   // The band above the message box: one row of pills.
   on('ui.render', { component: 'AbovePrompt' }, async ($, e, next) => {
-    if (e.props.hasSurvey) return next(e)
+    if (e.props.hasSurvey || (await read($, place)) !== 'above') return next(e)
 
     const l = await read($, work)
     const lv = await read($, live)
@@ -986,6 +1028,75 @@ export const register: Register = on => {
         )}
       </Box>
     )
+  })
+
+  // The hint line under the message box: the pills as pictures, after the
+  // engine's own hint. The terminal keeps its line: the status line says it.
+  on('ui.render', { component: 'PromptHint' }, async ($, e, next) => {
+    const l = await read($, work)
+    const lv = await read($, live)
+    const now = lv.now > 0 ? lv.now : await $.clock.now()
+    const pills = buildPills(l, lv, now)
+    const table = $.ui.resolve(e)
+    const Svg = e.surface !== 'terminal' && 'Svg' in table ? table.Svg : undefined
+
+    if (pills.length === 0 || Svg === undefined || (await read($, place)) !== 'below') return next(e)
+
+    hintDrawnAt = now
+
+    const { Box, Text } = table
+    const engine = await next(e)
+    const { shown, hidden } = fitPills(pills, 560, p => pillPixels(p, FOOTER_SIZE), PILL_GAP, 34)
+    const more = hidden.length === 0 ? undefined : moreSvg(hidden.length, FOOTER_SIZE)
+
+    return (
+      <Box flexDirection="row" flexWrap="nowrap" alignItems="center" gap="sm">
+        {engine}
+        {shown.map(p => (
+          <Box key={p.key} flexShrink={0} flexDirection="row" alignItems="center" gap="xs">
+            <Svg source={pillSvg(p, FOOTER_SIZE)} alt={pillAlt(p)} width={pillPixels(p, FOOTER_SIZE)} height={FOOTER_SIZE.h} />
+            <Box display="none" hover={{ display: 'flex' }}>
+              <Text dimColor wrap="truncate-end">
+                {p.detail}
+              </Text>
+            </Box>
+          </Box>
+        ))}
+        {more === undefined ? null : (
+          <Box key="more" flexShrink={0} flexDirection="row" alignItems="center" gap="xs">
+            <Svg source={more.source} alt={`${hidden.length} more`} width={more.width} height={FOOTER_SIZE.h} />
+            <Box display="none" hover={{ display: 'flex' }}>
+              <Text dimColor wrap="truncate-end">
+                {hidden.map(p => p.name).join(', ')}
+              </Text>
+            </Box>
+          </Box>
+        )}
+      </Box>
+    )
+  })
+
+  // `/pills above`, `/pills below`: where the row sits, kept for later sessions.
+  on('command.run', { command: 'pills' }, async ($, e) => {
+    const word = e.args.trim().toLowerCase()
+
+    if (word === 'above' || word === 'below') {
+      await update($, place, () => word)
+      await $.store.set(PLACE_KEY, word).catch(() => undefined)
+      soon($)
+
+      return {
+        text: `Background pills now show ${word} the message box. The choice is kept for new sessions.`,
+        isTextDisplayOnly: true,
+      }
+    }
+
+    const where = await read($, place)
+
+    return {
+      text: `Background pills show ${where} the message box. Type /pills above or /pills below to move them.`,
+      isTextDisplayOnly: true,
+    }
   })
 
   // A workflow starts: its name and phases, its run and task ids.

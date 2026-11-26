@@ -63,14 +63,18 @@ export type LiveAgent = {
   tokenSamples: number[]
 }
 
-/** What changes every second: the clock the band draws by, and the running agents. */
+/** What changes every second: the clock the pills draw by, and the running agents. */
 export type Live = { now: number; agents: LiveAgent[] }
+
+/** Where the row of pills sits: above the message box (the band) or under it (the hint line). */
+export type Place = 'above' | 'below'
 
 declare module 'claude-code' {
   interface PluginState {
     'background-pills': {
       work: Shaped<Work>
       live: Live
+      place: Place
     }
   }
 }

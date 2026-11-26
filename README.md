@@ -1,7 +1,8 @@
 # Background Pills for Claude Code
 
 See what Claude Code is doing in the background at a glance. **Background Pills** adds one quiet
-row of pills above the Claude Code message box, one pill for each piece of background work. It
+row of pills above (or, if you prefer, below) the Claude Code message box, one pill for each piece
+of background work. It
 works only in Claude Code (the Code tab of the desktop app, and the terminal), not in regular
 Claude app chats. Each pill fills up as
 the work moves toward its end, with the percent and the time left. The row is there only while
@@ -24,7 +25,8 @@ end shows a breathing dot and a passing light.
 | **Workflow** (the Workflow tool) | Fill and percent from the phases passed and the agents done in the current phase, plus an estimated time left |
 | **Background shell command** | An exact countdown when the command states its wait (`sleep 90`, `Start-Sleep -Seconds 90`, `timeout /t 90`); otherwise an estimate (`~`) from earlier runs of the same command; the first time, the time running |
 | **Background agent** | A breathing dot and a passing light, and the time running |
-| **Anything else in the background** | Its name and the time running |
+
+Background tasks that only wait, such as monitors and live updates, get no pill.
 
 **Point at a pill to see its detail** on the same row: a workflow's phase and agents, what an
 agent is doing and its tokens, where a command's length comes from.
@@ -36,9 +38,20 @@ agent is doing and its tokens, where a command's length comes from.
 ![A finished pill: a green ✓ npm run build, done](docs/finished.png)
 
 Pills keep the order the work started in, so they never jump. Pills that do not fit the row are
-counted in a last `+N`; point at it for their names. With the band collapsed, the status line
-under the message box says the same in a few words, for example
-`⏳ release-checks 47% ~6:12 · npm test 72% ~0:16`.
+counted in a last `+N`; point at it for their names.
+
+## Above or below the message box
+
+The pills sit **above** the message box by default. Type `/pills below` to move them to the line
+**under** the message box, and `/pills above` to bring them back. The choice is kept for new
+sessions.
+
+Under the message box the app shows text only, so there the pills are written as text with a
+small bar (a real screenshot of the Code tab):
+
+![Below the message box: Start-Sleep -Seconds 30… with a text bar, 49% and 2:33 left](docs/pills-below.png)
+
+The same text line also appears when you collapse the band above the message box.
 
 ## Install
 

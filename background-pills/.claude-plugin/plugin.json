@@ -1,6 +1,6 @@
 {
   "name": "background-pills",
-  "version": "0.5.0",
+  "version": "0.6.0",
   "description": "One row of pills above the message box for background work: workflows, agents and background commands fill up with the percent and the time left",
   "types": "./types/index.d.ts",
   "author": {

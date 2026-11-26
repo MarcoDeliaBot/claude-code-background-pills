@@ -14,7 +14,10 @@ it runs.
 - Pointing at a pill shows its detail on the same row.
 - Work that ends well turns green with a ✓ for two seconds, then goes.
 - Pills that do not fit the row are counted in `+N`.
-- With the band collapsed, the status line under the message box says the same in a few words.
+- The row sits above the message box by default. `/pills below` moves it under the message box,
+  where the app shows it as text with a small bar; `/pills above` brings it back. The choice is
+  kept for new sessions.
+- Background tasks that only wait, such as monitors and live updates, get no pill.
 
 Pictures, install steps and details: see the [repository README](../README.md).
 

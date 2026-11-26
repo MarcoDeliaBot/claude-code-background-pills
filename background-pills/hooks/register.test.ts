@@ -24,6 +24,7 @@ function harness(on: On, agents: FakeAgent[] = []) {
     return { value: undefined }
   })
   on('session.start', (_$, e) => ({ cwd: e.cwd }))
+  on('command.register', () => ({ value: { command: 'pills' } }))
   on('prompt.submit', (_$, e) => ({ text: e.text }))
   on('tool.call', { tool: ['Bash', 'PowerShell'] }, () => ({
     result: { stdout: '', stderr: '', interrupted: false, backgroundTaskId: `b${++n}` },
@@ -58,6 +59,19 @@ const BAND = {
     scroll: { offset: 0, bodyRows: 30 },
     view: {},
   },
+} as const
+
+const HINT = {
+  plugin: 'background-pills',
+  component: 'PromptHint',
+  requestId: 'hint',
+  props: { isDraft: false, isWorking: false, hint: '? for shortcuts' },
+} as const
+
+/** Where a typed command comes from and shows. */
+const RUN = {
+  origin: { kind: 'composer' },
+  presentation: { isFullscreen: false, columns: 100 },
 } as const
 
 function ended(id: string) {
@@ -234,6 +248,28 @@ test('an agent pill: a pulsing dot, its time, what it does; green when it comple
   await ui.unmount()
 })
 
+test('background tasks that only wait, such as monitors, get no pill', async ($, on) => {
+  const h = harness(on)
+
+  on('classic.Stop', () => ({}))
+
+  await $.session.start({ cwd: '/', surface: 'desktop', isInteractive: true })
+  await $.classic.Stop({
+    stop_hook_active: false,
+    background_tasks: [
+      { id: 'm1', type: 'monitor', status: 'running', description: 'live updates for artifact' },
+      { id: 'm2', type: 'monitor', status: 'running', description: 'live updates for artifact' },
+    ],
+  })
+
+  const ui = await $.ui.mount({ ...BAND, surface: 'desktop' })
+
+  await h.clock.advance(4000)
+  expect(await pictures(ui)).toEqual([])
+  expect(h.last()).toBe(undefined)
+  await ui.unmount()
+})
+
 test('pills that do not fit the row are counted in +N', async ($, on) => {
   const h = harness(on)
 
@@ -266,12 +302,76 @@ test('with the band collapsed, the status line says it in a few words', async ($
   const ui = await $.ui.mount({ ...BAND, surface: 'desktop', props: { ...BAND.props, isCollapsed: true } })
 
   await h.clock.advance(6000)
-  expect(h.last()).toBe('⏳ sleep 120 5% 1:54')
+  expect(h.last()).toBe('sleep 120 ▱▱▱▱▱▱ 5% 1:54')
 
   await $.prompt.submit(ended('b1'))
   await h.clock.advance(1000)
+  expect(h.last()).toBe('✓ sleep 120 done')
+
+  await h.clock.advance(2500)
   expect(h.last()).toBe(undefined)
   await ui.unmount()
+})
+
+test('/pills below moves the row under the message box, /pills above brings it back', async ($, on) => {
+  const h = harness(on)
+
+  await $.session.start({ cwd: '/', surface: 'desktop', isInteractive: true })
+  await $.tool.call({ tool: 'Bash', command: 'sleep 60 && echo done', run_in_background: true })
+
+  const band = await $.ui.mount({ ...BAND, surface: 'desktop' })
+  const hint = await $.ui.mount({ ...HINT, surface: 'desktop' })
+
+  await h.clock.advance(1000)
+  // Above by default.
+  expect((await pictures(band)).map(x => x.alt)).toEqual(['sleep 60 && echo done · 1% · 0:59'])
+  expect(await pictures(hint)).toEqual([])
+
+  const moved = await $.command.run({ command: 'pills', args: 'below', ...RUN })
+
+  expect(moved.text).toBe('Background pills now show below the message box. The choice is kept for new sessions.')
+  expect(h.store.get('position')).toBe('below')
+
+  await h.clock.advance(1000)
+  expect(await pictures(band)).toEqual([])
+  expect((await pictures(hint)).map(x => x.alt)).toEqual(['sleep 60 && echo done · 3% · 0:58'])
+  // Under the box the pills are smaller, to fit the line.
+  expect((await pictures(hint))[0]?.source).toContain('font-size:11px')
+  // The pictures show the pills: the status line stays quiet.
+  expect(h.last()).toBe(undefined)
+
+  await $.command.run({ command: 'pills', args: 'above', ...RUN })
+  await h.clock.advance(1000)
+  expect(await pictures(hint)).toEqual([])
+  expect((await pictures(band)).map(x => x.alt)).toEqual(['sleep 60 && echo done · 5% · 0:57'])
+
+  const told = await $.command.run({ command: 'pills', args: '', ...RUN })
+
+  expect(told.text).toBe('Background pills show above the message box. Type /pills above or /pills below to move them.')
+  await band.unmount()
+  await hint.unmount()
+})
+
+test('the place picked in an earlier session is kept', async ($, on) => {
+  const h = harness(on)
+
+  h.store.set('position', 'below')
+  await $.session.start({ cwd: '/', surface: 'desktop', isInteractive: true })
+  await $.tool.call({ tool: 'Bash', command: 'sleep 60', run_in_background: true })
+
+  const hint = await $.ui.mount({ ...HINT, surface: 'desktop' })
+
+  await h.clock.advance(1000)
+  expect((await pictures(hint)).map(x => x.alt)).toEqual(['sleep 60 · 1% · 0:59'])
+  await hint.unmount()
+
+  // The terminal draws no pictures under the box: the status line writes the pills.
+  const term = await $.ui.mount({ ...HINT, surface: 'terminal' })
+
+  await h.clock.advance(4000)
+  expect(await term.find({ type: 'Svg' })).toBeUndefined()
+  expect(h.last()).toBe('sleep 60 ▰▱▱▱▱▱ 8% 0:55')
+  await term.unmount()
 })
 
 test('lengths read from commands, ends from notifications, clocks, text bars', () => {
