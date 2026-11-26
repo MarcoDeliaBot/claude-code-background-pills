@@ -2,3 +2,6 @@
 **/.claude-plugin/types/
 **/tsconfig.json
 node_modules/
+
+# Working notes of the AI assistants: kept on the computer, never published.
+.ai/
