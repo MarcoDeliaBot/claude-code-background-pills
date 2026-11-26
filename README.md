@@ -1,7 +1,9 @@
 # Background Pills for Claude Code
 
-See what Claude is doing in the background at a glance. **Background Pills** adds one quiet row
-of pills above the message box, one pill for each piece of background work. Each pill fills up as
+See what Claude Code is doing in the background at a glance. **Background Pills** adds one quiet
+row of pills above the Claude Code message box, one pill for each piece of background work. It
+works only in Claude Code (the Code tab of the desktop app, and the terminal), not in regular
+Claude app chats. Each pill fills up as
 the work moves toward its end, with the percent and the time left. The row is there only while
 something runs.
 
@@ -40,6 +42,10 @@ under the message box says the same in a few words, for example
 
 ## Install
 
+> **Background Pills is a Claude Code mod. It works only in Claude Code: in the Code tab of the
+> Claude desktop app (graphic pills) and in the terminal (text pills). It does not appear in
+> regular Claude app chats. After installing, start a new session in the Code tab.**
+
 In Claude Code, run:
 
 ```
@@ -47,14 +53,13 @@ In Claude Code, run:
 /plugin install background-pills@background-pills
 ```
 
-Then start a new session. Built and tested on Claude Code 2.1.330, which runs mods (hooks modules)
-in the desktop app and the terminal. The desktop app draws the pills as shown above; the terminal
-draws them as text with bars like `▰▰▰▱▱▱`.
+The pictures above show the Code tab of the desktop app. In the terminal the pills are text, with
+bars like `▰▰▰▱▱▱`. Built and tested on Claude Code 2.1.330.
 
 ## Turn it off
 
-- **Desktop app:** click **+** next to the message box, choose **Plugins**, and turn off
-  `background-pills`.
+- **Code tab of the desktop app:** click **+** next to the message box, choose **Plugins**, and
+  turn off `background-pills`.
 - **Terminal:** `claude plugin disable background-pills@background-pills`
   (use `enable` to turn it back on, `uninstall` to remove it).
 

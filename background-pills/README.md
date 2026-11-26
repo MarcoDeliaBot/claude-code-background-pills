@@ -4,6 +4,10 @@ A Claude Code mod: one row of pills above the message box, one pill for each pie
 work in the session (workflows, background agents, background shell commands), shown only while
 it runs.
 
+> **Background Pills is a Claude Code mod. It works only in Claude Code: in the Code tab of the
+> Claude desktop app (graphic pills) and in the terminal (text pills). It does not appear in
+> regular Claude app chats. After installing, start a new session in the Code tab.**
+
 - The pill fills as the work moves toward its end, with the percent and the time left: exact when
   a command states its wait, estimated (`~`) from earlier runs or from a workflow's pace otherwise.
 - Work with no known end shows a breathing dot, a passing light and the time running.
@@ -14,5 +18,6 @@ it runs.
 
 Pictures, install steps and details: see the [repository README](../README.md).
 
-Turn it off: **+** next to the message box → **Plugins** → turn off `background-pills`, or
+Turn it off: in the Code tab, **+** next to the message box → **Plugins** → turn off
+`background-pills`, or
 `claude plugin disable background-pills@background-pills`.
